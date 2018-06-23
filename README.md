@@ -7,7 +7,7 @@ nmap
 python-nmap (https://pypi.org/project/python-nmap/)  
 termcolor (https://pypi.org/project/termcolor/)  
   
-**Example on how to run the tool***  
+**Example on how to run the tool**  
 ```
 $ python bypass.py -i eth0 -r 10.5.192.0/24  
 
