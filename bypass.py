@@ -31,6 +31,18 @@ def get_ip_address(ifname):
         struct.pack('256s', ifname[:15])
     )[20:24])
 
+def get_ip_addressv6(ifname):
+    cmd = "ifconfig "+ifname
+    p1 = subprocess.Popen(["ifconfig",ifname],stdout=subprocess.PIPE)
+
+    cmd = "grep -i inet6"
+    p2 = subprocess.Popen(["grep","-i","inet6"],stdin=p1.stdout,stdout=subprocess.PIPE)
+	
+    cmd = "awk '{print $2}'"
+    p3 = subprocess.Popen(["awk","{print $2}"],stdin=p2.stdout,stdout=subprocess.PIPE)
+    stdout,stderr = p3.communicate()
+    return (stdout).strip()
+
 def ipv62mac(ipv6):
     ipv6=ipv6.split("%")[0]
     # remove subnet info if given
@@ -94,9 +106,13 @@ if not options.interfaceNo or not options.ipRange:
 interfaceNo=options.interfaceNo
 myMac=get_hw_address(interfaceNo)
 myIP=get_ip_address(interfaceNo)
+myIPv6=get_ip_addressv6(interfaceNo)
 targetIP=options.ipRange
-
-cmd='ping6 -I '+interfaceNo+' -c 2 ff02::1'
+cmd=""
+if myIPv6.startswith("2620:"):
+	cmd='ping6 -I '+myIPv6+' -c 2 ff02::1%'+interfaceNo
+else:
+	cmd='ping6 -c 2 ff02::1%'+interfaceNo
 	
 cmdList=cmd.split(" ")
 out = subprocess.Popen(cmdList,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
