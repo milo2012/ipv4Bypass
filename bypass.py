@@ -1,3 +1,4 @@
+#!/usr/bin/env python 
 import nmap
 import sys
 import subprocess
