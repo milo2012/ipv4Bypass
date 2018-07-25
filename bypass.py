@@ -6,12 +6,83 @@ import socket
 import fcntl
 import struct
 import optparse
+import ipaddress
+import re
 from termcolor import colored, cprint
 
 nm = nmap.PortScanner()
 interfaceNo=""
 bold=True
 
+def ip2bin(ip):
+    b = ""
+    inQuads = ip.split(".")
+    outQuads = 4
+    for q in inQuads:
+        if q != "":
+            b += dec2bin(int(q),8)
+            outQuads -= 1
+    while outQuads > 0:
+        b += "00000000"
+        outQuads -= 1
+    return b
+
+def dec2bin(n,d=None):
+    s = ""
+    while n>0:
+        if n&1:
+            s = "1"+s
+        else:
+            s = "0"+s
+        n >>= 1
+    if d is not None:
+        while len(s)<d:
+            s = "0"+s
+    if s == "": s = "0"
+    return s
+
+def bin2ip(b):
+    ip = ""
+    for i in range(0,len(b),8):
+        ip += str(int(b[i:i+8],2))+"."
+    return ip[:-1]
+
+def convertCIDR(c):
+    tmpResultList=[]
+    parts = c.split("/")
+    baseIP = ip2bin(parts[0])
+    subnet = int(parts[1])
+    if subnet == 32:
+        x=bin2ip(baseIP)
+        tmpResultList.append(x)
+    else:
+        ipPrefix = baseIP[:-(32-subnet)]
+        for i in range(2**(32-subnet)):
+            x=bin2ip(ipPrefix+dec2bin(i, (32-subnet)))
+            tmpResultList.append(x)
+    return tmpResultList
+            
+def validateCIDRBlock(b):
+    # appropriate format for CIDR block ($prefix/$subnet)
+    p = re.compile("^([0-9]{1,3}\.){0,3}[0-9]{1,3}(/[0-9]{1,2}){1}$")
+    if not p.match(b):
+
+        return False
+    # extract prefix and subnet size
+    prefix, subnet = b.split("/")
+    # each quad has an appropriate value (1-255)
+    quads = prefix.split(".")
+    for q in quads:
+        if (int(q) < 0) or (int(q) > 255):
+            print "Error: quad "+str(q)+" wrong size."
+            return False
+    # subnet is an appropriate value (1-32)
+    if (int(subnet) < 1) or (int(subnet) > 32):
+        print "Error: subnet "+str(subnet)+" wrong size."
+        return False
+    # passed all checks -> return True
+    return True
+    
 def diff(li1, li2):
     return (list(set(li1) - set(li2)))
 
@@ -108,7 +179,10 @@ interfaceNo=options.interfaceNo
 myMac=get_hw_address(interfaceNo)
 myIP=get_ip_address(interfaceNo)
 myIPv6=get_ip_addressv6(interfaceNo)
-targetIP=options.ipRange
+targetIP=(options.ipRange).strip()
+if not validateCIDRBlock(targetIP):
+	sys.exit()
+	
 cmd=""
 if myIPv6.startswith("2620:"):
 	cmd='ping6 -I '+myIPv6+' -c 2 ff02::1%'+interfaceNo
@@ -134,16 +208,18 @@ for x in nm.all_hosts():
 
 print "\n[*] Found the below IPv4 addresses"
 tmpIPv4List=[]
-for x in ipv4List:
-	#cmd="/usr/sbin/arp -a "+x
-	cmd="arp -a "+x
-	tmpResults=runCommand(cmd)
-	tmpMacAddr=tmpResults.split(" at ")
-	if "no match found" not in str(tmpMacAddr):
-		tmpMacAddr=tmpMacAddr[1]
-		tmpMacAddr=tmpMacAddr.split(" [ether] ")[0]	
-		tmpIPv4List.append([x,str(tmpMacAddr)])
-		print x+"\t"+str(tmpMacAddr)
+tmpIPTargetList=convertCIDR(targetIP)
+
+cmd="arp-scan "+targetIP
+tmpResults=runCommand(cmd)
+tmpList1=tmpResults.split("\n")
+for x in tmpList1:
+	for y in tmpIPTargetList:
+		if y+"\t" in x:
+			tmpIP=x.split("\t")[0]
+			tmpMacAddr=x.split("\t")[1]
+			print tmpIP+"\t"+str(tmpMacAddr)
+			tmpIPv4List.append([tmpIP,str(tmpMacAddr)])
 
 print "\n[*] Found the below IPv6 addresses"
 tmpIPv6List=[]
