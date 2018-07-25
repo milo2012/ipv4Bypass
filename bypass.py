@@ -6,7 +6,7 @@ import socket
 import fcntl
 import struct
 import optparse
-import ipaddress
+
 import re
 from termcolor import colored, cprint
 
