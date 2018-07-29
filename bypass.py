@@ -14,6 +14,14 @@ nm = nmap.PortScanner()
 interfaceNo=""
 bold=True
 
+def mac_to_ipv6_linklocal(mac):
+    mac_value = int(mac.translate(None, ' .:-'), 16)
+    high2 = mac_value >> 32 & 0xffff ^ 0x0200
+    high1 = mac_value >> 24 & 0xff
+    low1 = mac_value >> 16 & 0xff
+    low2 = mac_value & 0xffff
+    return 'fe80::{:04x}:{:02x}ff:fe{:02x}:{:04x}'.format(high2, high1, low1, low2)
+        
 def ip2bin(ip):
     b = ""
     inQuads = ip.split(".")
@@ -175,6 +183,8 @@ if not options.interfaceNo or not options.ipRange:
 	print "[*] Please provide the -i and -r options"
 	sys.exit()
 
+convertedIPv6LinkLocalList=[]
+
 interfaceNo=options.interfaceNo
 myMac=get_hw_address(interfaceNo)
 myIP=get_ip_address(interfaceNo)
@@ -220,7 +230,12 @@ for x in tmpList1:
 			tmpMacAddr=x.split("\t")[1]
 			print tmpIP+"\t"+str(tmpMacAddr)
 			tmpIPv4List.append([tmpIP,str(tmpMacAddr)])
-
+print "\n[*] Converting Mac Address to Link Local IPv6 addresses"
+for x in tmpIPv4List:	
+	tmpLocalIPv6=mac_to_ipv6_linklocal(x[1])
+	print tmpLocalIPv6+"\t"+x[1].upper()+"\t"+x[0]
+	convertedIPv6LinkLocalList.append([tmpLocalIPv6,x[1].upper(),x[0]])
+	
 print "\n[*] Found the below IPv6 addresses"
 tmpIPv6List=[]
 for x in ipv6List:
@@ -236,6 +251,7 @@ for x in ipv6List:
 		else:
 			print x+"\t"+tmpMacAddr
 print "\n[*] Matching IPv4 and IPv6 addresses"
+tmpCompletedMacAddrList=[]
 tmpResultList=[]
 for y in tmpIPv6List:
 	tmpFound=False
@@ -243,6 +259,7 @@ for y in tmpIPv6List:
 			if y[1].lower()==x[1].lower():
 				print y[0]+"\t"+y[1]+"\t"+x[0]
 				tmpResultList.append([y[0],y[1],x[0]])
+				tmpCompletedMacAddrList.append(y[1])
 				tmpFound=True
 	if tmpFound==False:
 		if [y[0],"",""] not in tmpResultList:
@@ -251,9 +268,16 @@ for y in tmpIPv6List:
 				print y[0]+"\t"+tmpMac+"\t"+myIP+" [This Computer]"
 				tmpResultList.append([y[0],tmpMac,myIP])
 				#tmpResultList.append([y[0],tmpMac,"[This Computer]"])
+				tmpCompletedMacAddrList.append(tmpMac)
 			else:
 				print y[0]+"\t"+tmpMac
+				tmpCompletedMacAddrList.append(tmpMac)
 				tmpResultList.append([y[0],tmpMac,""])
+
+for x in convertedIPv6LinkLocalList:
+	if x[1] not in tmpCompletedMacAddrList:
+		print x[0]+"%"+interfaceNo+":"+"\t"+x[1]+"\t"+x[2]+" [Converted]"
+		tmpResultList.append([x[0]+"%"+interfaceNo+":",x[1],x[2]])
 
 print "\n[*] Comparing ports on IPv4 and IPv6 interfaces on hosts"
 for x in tmpResultList:
