@@ -4,6 +4,7 @@
 **Dependences (tested on Kali Linux)**  
 python2.7  
 nmap  
+arp-scan (apt-get install arp-scan) 
 python-nmap (https://pypi.org/project/python-nmap/)  
 termcolor (https://pypi.org/project/termcolor/)  
   
