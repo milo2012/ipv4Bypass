@@ -207,7 +207,7 @@ tmpResultList=stdout.split("\n")
 for x in tmpResultList:
 	if " bytes from " in x:
 		tmpIP=x.split(" ")[3]
-		if tmpIP not in ipv6List:
+		if tmpIP not in ipv6List and len(tmpIP)>0:
 			ipv6List.append(tmpIP)
 
 nm.scan(targetIP,arguments='-sP -T4')
@@ -240,7 +240,7 @@ print "\n[*] Found the below IPv6 addresses"
 tmpIPv6List=[]
 for x in ipv6List:
 	tmpMacAddr=getRemoteMac(x)
-	if tmpMacAddr!="{}":
+	if tmpMacAddr!="{}" and tmpMacAddr!=None:
 		tmpIPv6List.append([x,tmpMacAddr])
 		print x+"\t"+tmpMacAddr
 	else:
