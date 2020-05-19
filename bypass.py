@@ -1,4 +1,5 @@
 #!/usr/bin/env python 
+import os
 import nmap
 import sys
 import subprocess
@@ -9,6 +10,10 @@ import optparse
 
 import re
 from termcolor import colored, cprint
+arpscanToolPath="/usr/sbin/arp-scan"
+if not os.path.exists(arpscanToolPath):
+	print("[-] arp-scan does not exists in "+arpscanToolPath)
+	sys.exit()
 
 nm = nmap.PortScanner()
 interfaceNo=""
@@ -221,6 +226,7 @@ tmpIPv4List=[]
 tmpIPTargetList=convertCIDR(targetIP)
 
 cmd="/usr/sbin/arp-scan "+targetIP
+
 tmpResults=runCommand(cmd)
 tmpList1=tmpResults.split("\n")
 for x in tmpList1:
