@@ -233,7 +233,7 @@ print("\n[*] Found the below IPv4 addresses")
 tmpIPv4List=[]
 tmpIPTargetList=convertCIDR(targetIP)
 
-cmd="/usr/sbin/arp-scan "+targetIP
+cmd="/usr/sbin/arp-scan -I "+interfaceNo+" "+targetIP
 
 tmpResults=runCommand(cmd)
 tmpList1=tmpResults.split(b"\n")
