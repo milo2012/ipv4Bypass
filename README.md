@@ -2,11 +2,10 @@
 **Using IPv6 to Bypass Security**   
     
 **Dependences (tested on Kali Linux)**  
-- python2.7  
+- python3  
 - nmap  
 - arp-scan (apt-get install arp-scan) 
 - python-nmap (https://pypi.org/project/python-nmap/)  
-- termcolor (https://pypi.org/project/termcolor/)  
   
 **Example on how to run the tool**  
 ```
@@ -27,5 +26,3 @@ Options:
   
 **More information**        
 See https://milo2012.wordpress.com/2018/06/22/using-ipv6-to-bypass-security-tool/ for an explanation on the technique and how the tool works.
-     
-
