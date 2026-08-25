@@ -1,0 +1,74 @@
+# Release automation: push a tag like v1.0.0 and GitHub builds every
+# supported platform and publishes the binaries to a GitHub release.
+#
+#   git tag v1.2.3 && git push origin v1.2.3
+#
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {} # manual runs build artifacts but do not publish
+
+permissions:
+  contents: write # required to create the release
+
+jobs:
+  release:
+    name: Build & publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build all platforms
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: ./build.sh
+
+      - name: Package archives
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p pkg
+          for f in dist/ipv4Bypass-*; do
+            base="$(basename "$f")"
+            target="${base#ipv4Bypass-}"   # e.g. linux-amd64, windows-amd64.exe
+            if [[ "$base" == *.exe ]]; then
+              out="ipv4Bypass-${VERSION}-${target%.exe}.zip"
+              (cd dist && zip -q "../pkg/$out" "$base")
+            else
+              out="ipv4Bypass-${VERSION}-${target}.tar.gz"
+              tar -czf "pkg/$out" -C dist "$base"
+            fi
+            echo "packaged pkg/$out"
+          done
+          (cd pkg && sha256sum ipv4Bypass-* > SHA256SUMS)
+
+      - name: Upload build artifacts (every run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipv4Bypass-binaries
+          path: |
+            pkg/*.tar.gz
+            pkg/*.zip
+            pkg/SHA256SUMS
+          retention-days: 14
+
+      - name: Publish GitHub release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            pkg/*.tar.gz
+            pkg/*.zip
+            pkg/SHA256SUMS
+          generate_release_notes: true
