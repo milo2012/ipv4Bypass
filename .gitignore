@@ -1,0 +1,46 @@
+# Build / dist folders
+dist/
+dist-*/
+*.dist
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+__debug_bin
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Mac OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+
+# Dependency directories
+vendor/
+node_modules/
+
+# Logs and temp files
+*.log
+tmp/
+temp/
+*.tmp
