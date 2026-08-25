@@ -34,10 +34,10 @@ the v4 side is properly locked down. This tool finds exactly those gaps.
 - **UDP service probing** — DNS, NTP, SNMP, TFTP, NetBINS, mDNS, SIP, CoAP,
   SSDP, IKE, memcached with reply classification (`--udp`)
 - **Findings engine**
-  - `new_exposure_ipv6` / `missing_on_ipv6` per port, both TCP and UDP
-  - `protocol_mismatch` when the same port serves different fingerprints
-  - `gua_exposed` for open ports on globally routable IPv6
-  - `ptr_mismatch` when reverse DNS disagrees between stacks
+  - `new_exposure_ipv6` / `udp_new_exposure` — open on v6, firewalled on v4
+    (the headline finding; the only category shown by default)
+  - `missing_on_ipv6`, `protocol_mismatch`, `gua_exposed`, `ptr_mismatch`
+    (shown with `-v`)
   - Severity tags: critical/high/medium/low/info (bypass direction is boosted)
 - **Router advertisement inventory** (`--ra`, root/Linux): prefixes + default routers
 - **mDNS/DNS-SD hostname correlation** (on by default)
@@ -59,6 +59,27 @@ go build -o ipv4Bypass .          # current platform
 `dist/ipv4Bypass-<os>-<arch>[.exe]` for the full matrix (linux amd64/arm64/arm,
 darwin amd64/arm64, windows amd64/arm64), embeds a version string
 (override with `VERSION=v1.2.3 ./build.sh`) and writes `dist/SHA256SUMS`.
+
+## Automated releases
+
+Two GitHub Actions workflows live in `.github/workflows/`:
+
+- **CI** (`ci.yml`) — on every push to `master`/`main` and every PR:
+  `go vet`, `-race` tests, gofmt check and a native build, across
+  Linux, macOS and Windows runners.
+- **Release** (`release.yml`) — push a tag and GitHub builds all seven
+  platforms, packages them and publishes a release:
+
+  ```
+  git tag v1.2.3
+  git push origin v1.2.3
+  ```
+
+  Artifacts per release: `ipv4Bypass-vX.Y.Z-<os>-<arch>.tar.gz`
+  (`.zip` for Windows) plus a `SHA256SUMS` file. Release notes are generated
+  from commit history. The workflow can also be triggered manually from the
+  Actions tab (`workflow_dispatch`) — that builds and stores artifacts without
+  publishing a release.
 
 ## Usage
 
@@ -115,6 +136,14 @@ sudo ./ipv4Bypass -i eth0 -r 10.5.192.0/24 --ndjson - | jq 'select(.open)'
 
 The tool detects privileges up front and tells you exactly what is degraded;
 `--strict` makes it refuse reduced-capability runs instead.
+
+## Output focus
+
+By default the terminal report shows only what matters for this technique:
+ports reachable over IPv6 that IPv4 blocks. Everything else (v4-only ports,
+fingerprint mismatches, PTR discrepancies) is summarised in a one-line count;
+pass `-v` to see the complete comparison. JSON, NDJSON and CSV output always
+contain every finding regardless of `-v`.
 
 ## Layout
 

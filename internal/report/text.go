@@ -15,11 +15,19 @@ import (
 type Text struct {
 	Out      io.Writer
 	Color    bool // caller decides (TTY + NO_COLOR)
+	Verbose  bool // show ALL dual-stack differences, not just IPv6 exposures
 	ShowInfo bool // include info-severity findings in the findings section
 }
 
 func NewText() *Text {
 	return &Text{Out: os.Stdout, Color: useColor(), ShowInfo: true}
+}
+
+// headlineCategories are what users of this tool fundamentally care about:
+// services reachable via IPv6 that IPv4 policy blocks.
+var headlineCategories = map[model.Category]bool{
+	model.CatNewExposure:    true,
+	model.CatUDPNewExposure: true,
 }
 
 func useColor() bool {
@@ -75,18 +83,21 @@ func (t *Text) Render(rep *model.Report) {
 	}
 
 	t.header("Dual-stack port comparison")
-	findings := make([]model.Finding, 0, len(rep.Findings))
+	visible := make([]model.Finding, 0, len(rep.Findings))
 	for _, f := range rep.Findings {
 		if f.Severity == model.SevInfo && !t.ShowInfo {
 			continue
 		}
-		findings = append(findings, f)
+		if !t.Verbose && !headlineCategories[f.Category] {
+			continue // missing-on-v6 / mismatch / PTR noise stays hidden
+		}
+		visible = append(visible, f)
 	}
-	sort.Slice(findings, func(i, j int) bool { return findings[i].Severity.Less(findings[j].Severity) })
-	if len(findings) == 0 {
-		t.plain("No dual-stack differences found.")
+	sort.Slice(visible, func(i, j int) bool { return visible[i].Severity.Less(visible[j].Severity) })
+	if len(visible) == 0 {
+		t.plain("No IPv6-only exposures found — every open port on IPv6 is also open on IPv4.")
 	}
-	for _, f := range findings {
+	for _, f := range visible {
 		paint := t.paint(f.Severity)
 		reset := ansiReset
 		if !t.Color {
@@ -98,13 +109,24 @@ func (t *Text) Render(rep *model.Report) {
 			categoryLabel(f.Category), f.Detail)
 	}
 
+	if !t.Verbose {
+		if hidden := len(rep.Findings) - len(visible); hidden > 0 {
+			fmt.Fprintf(t.Out, "\n%d additional difference(s) hidden (missing-on-IPv6, protocol mismatches, PTR).\nRun with -v to see the complete comparison.\n", hidden)
+		}
+	}
+
 	t.header("Summary")
 	s := rep.Stats
 	fmt.Fprintf(t.Out,
 		"Hosts found: %d | scanned: %d | open tcp v4/v6: %d/%d | open udp v4/v6: %d/%d\n",
 		s.HostsFound, s.HostsScanned, s.OpenV4TCP, s.OpenV6TCP, s.OpenV4UDP, s.OpenV6UDP)
+
+	shownCounts := map[model.Severity]int{}
+	for _, f := range visible {
+		shownCounts[f.Severity]++
+	}
 	for _, sev := range []model.Severity{model.SevCritical, model.SevHigh, model.SevMedium, model.SevLow, model.SevInfo} {
-		if n := s.Findings[sev]; n > 0 {
+		if n := shownCounts[sev]; n > 0 {
 			paint := t.paint(sev)
 			reset := ansiReset
 			if !t.Color {

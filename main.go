@@ -225,6 +225,7 @@ func main() {
 	rep.Stats.DurationSecs = time.Since(started).Seconds()
 
 	out := report.NewText()
+	out.Verbose = cfg.verbose
 	out.Render(rep)
 
 	if cfg.jsonPath != "" {
