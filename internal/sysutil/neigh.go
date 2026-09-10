@@ -6,6 +6,46 @@ import (
 	"strings"
 )
 
+// ReadCombinedNeighTable returns all kernel neighbour entries (both IPv4 ARP
+// and IPv6 NDP) for the named interface in a single call. On Linux this runs
+// `ip neigh show dev <iface>` which emits both address families together,
+// giving us a consistent snapshot without two separate commands. On other
+// platforms it falls back to merging ReadARPTable + ReadNDPTable.
+//
+// This is the preferred seeding method: it captures STALE entries that were
+// populated by prior traffic and would be missed by a fresh active sweep.
+func ReadCombinedNeighTable(iface string) ([]NeighEntry, error) {
+	switch runtime.GOOS {
+	case "linux":
+		out, err := Output("ip", "neigh", "show", "dev", iface)
+		if err != nil {
+			return nil, fmt.Errorf("reading combined neigh table: %w", err)
+		}
+		return ParseNeighLines(out), nil
+	default:
+		// Non-Linux: merge both tables, dedup by IP.
+		seen := map[string]bool{}
+		var all []NeighEntry
+		if v4, err := ReadARPTable(); err == nil {
+			for _, e := range v4 {
+				if !seen[e.IP] {
+					seen[e.IP] = true
+					all = append(all, e)
+				}
+			}
+		}
+		if v6, err := ReadNDPTable(); err == nil {
+			for _, e := range v6 {
+				if !seen[e.IP] {
+					seen[e.IP] = true
+					all = append(all, e)
+				}
+			}
+		}
+		return all, nil
+	}
+}
+
 // ReadARPTable returns the kernel IPv4 neighbour (ARP) table.
 //   - Linux:  `ip neigh show` (falls back to `arp -n`)
 //   - macOS:  `arp -an`

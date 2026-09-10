@@ -76,6 +76,17 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		logger = log.Default()
 	}
 
+	// ---- 0. Kernel neighbour table (always, both families) -------------
+	// Read whatever the kernel already knows before we start our own sweep.
+	// This captures STALE entries from prior traffic that a fresh sweep
+	// window might miss — the primary cause of IPv6↔IPv4 correlation gaps.
+	kernelNeigh, err := sysutil.ReadCombinedNeighTable(opts.Iface.Name)
+	if err != nil {
+		res.warnf("cannot read kernel neigh table: %v", err)
+	} else {
+		logger.Printf("[*] kernel neigh table: %d entries (pre-sweep seed)", len(kernelNeigh))
+	}
+
 	// ---- 1. IPv4 ARP sweep --------------------------------------------
 	arpPairs := map[string]string{} // ip4 -> mac
 	nativeFailed := false
@@ -144,6 +155,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 
 	// ---- correlate ------------------------------------------------------
 	corr := newCorrelator(opts, res)
+	// Seed from the kernel table first — this gives us STALE entries and
+	// cross-links MACs to IPv4 addresses that the active ARP sweep missed.
+	corr.seedKernelNeigh(kernelNeigh)
 	corr.seedARP(arpPairs)
 	corr.applyNDP(ndp)
 	corr.applyMulticast(live6)
@@ -247,6 +261,61 @@ func (c *correlator) hostForMAC(mac string) *model.Host {
 	}
 	c.byMAC[norm] = h
 	return h
+}
+
+// seedKernelNeigh processes the combined kernel neighbour table (v4 + v6) and
+// pre-populates host records so that subsequent seedARP / applyNDP calls can
+// link addresses to MACs they would otherwise miss.
+//
+// For each entry:
+//   - IPv4 + MAC  → same as seedARP: creates/finds host by MAC, fills IPv4
+//   - IPv6 + MAC  → creates/finds host by MAC, adds scoped IPv6
+//   - IPv6 no MAC → orphan (handled by applyNDP later, duplicates skipped)
+//
+// FAILED/INCOMPLETE entries (no MAC) for IPv4 are skipped — they add noise
+// without usable correlation data.
+func (c *correlator) seedKernelNeigh(entries []sysutil.NeighEntry) {
+	for _, e := range entries {
+		if e.MAC == "" {
+			continue // incomplete/failed — no MAC to correlate on
+		}
+		ip := netutil.StripZone(e.IP)
+		parsed := net.ParseIP(ip)
+		if parsed == nil || parsed.IsLoopback() {
+			continue
+		}
+		isV4 := parsed.To4() != nil
+		if isV4 {
+			// IPv4 entry: same logic as seedARP
+			if ip == c.selfIP4 || netutil.NormalizeMAC(e.MAC) == c.selfMAC {
+				continue
+			}
+			if !inRange(c.opts.CIDR, ip) {
+				continue // outside target range
+			}
+			h := c.hostForMAC(e.MAC)
+			if h == nil {
+				continue
+			}
+			if h.IPv4 == "" {
+				h.IPv4 = ip
+			}
+		} else {
+			// IPv6 entry: add scoped address to host keyed by MAC
+			if netutil.NormalizeMAC(e.MAC) == c.selfMAC {
+				continue
+			}
+			scoped := ip
+			if parsed.IsLinkLocalUnicast() {
+				scoped = netutil.Scoped(ip, c.opts.Iface.Name)
+			}
+			h := c.hostForMAC(e.MAC)
+			if h == nil {
+				continue
+			}
+			h.IPv6 = appendUnique(h.IPv6, scoped)
+		}
+	}
 }
 
 func (c *correlator) seedARP(pairs map[string]string) {
