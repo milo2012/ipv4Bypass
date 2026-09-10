@@ -224,23 +224,35 @@ func inRange(cidr, ip string) bool {
 
 // correlator merges evidence from all sources into model.Host records.
 type correlator struct {
-	opts    Options
-	res     *Result
-	byMAC   map[string]*model.Host
-	orphan  []*model.Host // v6 hosts whose MAC is unknown
-	selfMAC string
-	selfIP4 string
+	opts     Options
+	res      *Result
+	byMAC    map[string]*model.Host
+	orphan   []*model.Host // v6 hosts whose MAC is unknown
+	selfMAC  string
+	selfIP4  string
+	selfIPv6 map[string]bool // all IPv6 addresses belonging to our own interface
 }
 
 type vendorCarrier = *Result
 
 func newCorrelator(opts Options, res *Result) *correlator {
+	selfV6 := make(map[string]bool)
+	for _, a := range opts.Iface.IPv6All {
+		selfV6[netutil.StripZone(a)] = true
+	}
+	// Also derive the link-local from our MAC via EUI-64 so we catch our
+	// own fe80:: even when it isn't listed in IPv6All (link-locals are
+	// sometimes omitted by the OS address enumerator).
+	if ll, err := netutil.MACToEUI64(opts.Iface.HWAddr); err == nil {
+		selfV6[ll] = true
+	}
 	return &correlator{
-		opts:    opts,
-		res:     res,
-		byMAC:   map[string]*model.Host{},
-		selfMAC: netutil.NormalizeMAC(opts.Iface.HWAddr),
-		selfIP4: opts.Iface.IPv4,
+		opts:     opts,
+		res:      res,
+		byMAC:    map[string]*model.Host{},
+		selfMAC:  netutil.NormalizeMAC(opts.Iface.HWAddr),
+		selfIP4:  opts.Iface.IPv4,
+		selfIPv6: selfV6,
 	}
 }
 
@@ -339,6 +351,11 @@ func (c *correlator) seedARP(pairs map[string]string) {
 	}
 }
 
+// isSelfIPv6 returns true if addr (with or without zone) belongs to our interface.
+func (c *correlator) isSelfIPv6(addr string) bool {
+	return c.selfIPv6[netutil.StripZone(addr)]
+}
+
 func (c *correlator) applyNDP(entries []sysutil.NeighEntry) {
 	for _, e := range entries {
 		ip := netutil.StripZone(e.IP)
@@ -349,6 +366,10 @@ func (c *correlator) applyNDP(entries []sysutil.NeighEntry) {
 		scoped := ip
 		if parsed.IsLinkLocalUnicast() {
 			scoped = netutil.Scoped(ip, c.opts.Iface.Name)
+		}
+		// Skip our own interface addresses.
+		if c.isSelfIPv6(ip) {
+			continue
 		}
 		var h *model.Host
 		if e.MAC != "" {
@@ -388,6 +409,10 @@ func (c *correlator) applyMulticast(live []string) {
 	for _, addr := range live {
 		base := netutil.StripZone(addr)
 		if ip := net.ParseIP(base); ip == nil || ip.IsLoopback() {
+			continue
+		}
+		// Skip our own interface addresses — we always respond to ff02::1.
+		if c.isSelfIPv6(base) {
 			continue
 		}
 		if c.hostOwningAddr(addr) != nil {

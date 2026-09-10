@@ -9,11 +9,11 @@ import (
 // ReadCombinedNeighTable returns all kernel neighbour entries (both IPv4 ARP
 // and IPv6 NDP) for the named interface in a single call. On Linux this runs
 // `ip neigh show dev <iface>` which emits both address families together,
-// giving us a consistent snapshot without two separate commands. On other
-// platforms it falls back to merging ReadARPTable + ReadNDPTable.
+// giving a consistent snapshot without two separate commands.
+// On other platforms it merges ReadARPTable + ReadNDPTable with dedup by IP.
 //
-// This is the preferred seeding method: it captures STALE entries that were
-// populated by prior traffic and would be missed by a fresh active sweep.
+// This is the preferred seeding method: it captures STALE entries populated
+// by prior traffic that a fresh active sweep window would miss.
 func ReadCombinedNeighTable(iface string) ([]NeighEntry, error) {
 	switch runtime.GOOS {
 	case "linux":
@@ -23,7 +23,6 @@ func ReadCombinedNeighTable(iface string) ([]NeighEntry, error) {
 		}
 		return ParseNeighLines(out), nil
 	default:
-		// Non-Linux: merge both tables, dedup by IP.
 		seen := map[string]bool{}
 		var all []NeighEntry
 		if v4, err := ReadARPTable(); err == nil {
